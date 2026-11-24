@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PlastiCraft Kiosk — Team EcoNode, UTM</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{eco:{'900':'#103B2B','700':'#145A3A','500':'#16A34A','300':'#4ADE80','100':'#DCFCE7'},utm:'#800020'}}}}</script>
+<style>
+@keyframes scan{0%{top:10%}50%{top:80%}100%{top:10%}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideLeft{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes fillPour{0%{height:0}100%{height:100%}}
+@keyframes countUp{from{opacity:.5;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+@keyframes qrPulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes gaugeFill{from{stroke-dashoffset:251}to{stroke-dashoffset:var(--gauge-target)}}
+.anim-fade{animation:fadeIn .3s ease-out both}
+.anim-slide{animation:slideUp .35s ease-out both}
+.anim-left{animation:slideLeft .3s ease-out both}
+.anim-right{animation:slideRight .3s ease-out both}
+.scan-line{position:absolute;left:8%;right:8%;height:3px;background:linear-gradient(90deg,transparent,#16A34A,transparent);animation:scan 1.2s ease-in-out infinite}
+.btn-touch{@apply rounded-2xl font-semibold text-lg py-4 px-6 select-none;transition:all .12s cubic-bezier(.4,0,.2,1)}
+.btn-touch:active{transform:scale(.93);filter:brightness(.9)}
+.card{@apply bg-white rounded-2xl shadow-md p-5 cursor-pointer border border-gray-100;transition:all .12s cubic-bezier(.4,0,.2,1)}
+.card:active{transform:scale(.96);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.progress-bar{transition:width .6s cubic-bezier(.4,0,.2,1)}
+#toast-box{transition:opacity .25s,transform .25s}
+*{-webkit-tap-highlight-color:transparent;user-select:none}
+body{font-family:system-ui,-apple-system,sans-serif}
+.screen-enter{animation:slideLeft .28s ease-out both}
+.screen-exit{animation:slideRight .2s ease-in both;pointer-events:none}
+.roll-up{animation:countUp .35s ease-out both}
+.drawer-bg{transition:opacity .25s}
+.drawer-panel{transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.gauge-ring{transition:stroke-dashoffset .8s cubic-bezier(.4,0,.2,1)}
+</style>
+</head>
+<body class="bg-neutral-900 flex items-center justify-center min-h-screen p-0 m-0">
+
+<!-- ============ OUTER KIOSK FRAME ============ -->
+<div class="relative w-full max-w-md mx-auto" style="min-height:100dvh">
+  <!-- Reset Demo button -->
+  <button onclick="resetDemo()" class="absolute -top-0 right-1 z-[70] bg-red-600/90 hover:bg-red-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-b-lg shadow-lg active:scale-95 transition" title="Reset Demo State">⟳ Reset Demo</button>
+
+  <!-- Kiosk bezel -->
+  <div id="kiosk" class="relative bg-white overflow-hidden flex flex-col" style="min-height:100dvh;box-shadow:0 0 0 4px #1a1a1a,0 0 0 8px #333,0 8px 40px rgba(0,0,0,.6);border-radius:18px">
+
+  <!-- ===== STATUS BAR ===== -->
+  <div class="bg-eco-900 text-eco-300 flex items-center justify-between px-4 py-1.5 text-[11px] font-medium shrink-0 z-20 select-none" style="letter-spacing:.02em">
+    <div class="flex items-center gap-2">
+      <span>☀️ Solar</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="2.5"><path d="M1 6l5 5 5-5"/><path d="M1 1l5 5 5-5" opacity=".4"/></svg>
+      <span class="text-eco-300">IoT Online</span>
+    </div>
+    <span id="clock" class="tabular-nums"></span>
+    <div class="flex items-center gap-2">
+      <svg width="16" height="12" viewBox="0 0 24 16" fill="none" stroke="#4ADE80" stroke-width="2"><rect x="1" y="4" width="18" height="10" rx="2"/><path d="M21 8v4" stroke-linecap="round"/><rect x="3" y="6" width="10" height="6" rx="1" fill="#4ADE80"/></svg>
+      <span>87%</span>
+    </div>
+  </div>
+
+  <!-- ===== NAV BAR ===== -->
+  <nav id="nav" class="hidden bg-eco-900 text-white flex items-center justify-between px-4 py-2.5 shrink-0 z-10">
+    <button onclick="goBack()" class="flex items-center gap-1 text-sm font-medium active:opacity-60 transition"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>Back</button>
+    <span id="nav-title" class="font-semibold text-sm truncate mx-2"></span>
+    <button onclick="goHome()" class="flex items-center gap-1 text-sm font-medium active:opacity-60 transition"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1z"/><path d="M9 22V12h6v10"/></svg>Home</button>
+  </nav>
+
+  <!-- ===== TOAST ===== -->
+  <div id="toast-box" class="fixed top-14 left-1/2 -translate-x-1/2 z-[60] bg-eco-900 text-white px-5 py-2.5 rounded-xl shadow-xl text-center text-sm font-medium opacity-0 -translate-y-3 pointer-events-none max-w-xs"></div>
+
+  <!-- ===== SCREENS ===== -->
+  <div id="screens" class="flex-1 overflow-y-auto overflow-x-hidden relative">
+
+  <!-- SCREEN 1: IDLE -->
+  <section id="s1" class="screen absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-eco-900 via-eco-700 to-eco-900 text-white">
+    <div class="mb-5 anim-fade"><svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l1.5 4L12 8l2.5 8L16 12"/><path d="M7 2.5c2 2.5 1.5 5 0 7M17 2.5c-2 2.5-1.5 5 0 7" stroke="#16A34A" stroke-width="1"/></svg></div>
+    <h1 class="text-3xl font-extrabold leading-tight mb-2 anim-fade" style="animation-delay:.08s">PlastiCraft Kiosk</h1>
+    <p class="text-eco-300 text-lg mb-1 anim-fade" style="animation-delay:.12s">by <span class="text-white font-semibold">Team EcoNode</span>, UTM</p>
+    <p class="text-eco-300/70 text-base mb-10 anim-fade" style="animation-delay:.16s">Turn Trash into 3D Merch &amp; Rewards</p>
+    <button onclick="nav(2,'AI Bottle Scanner')" class="btn-touch bg-eco-500 text-white w-full mb-3 anim-fade flex items-center justify-center gap-3" style="animation-delay:.24s">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+      Simulate Bottle Drop (AI Scan)
+    </button>
+    <button onclick="showQRLogin()" class="btn-touch bg-white/10 backdrop-blur text-white w-full border border-white/20 anim-fade flex items-center justify-center gap-3" style="animation-delay:.32s">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><path d="M21 14h-3v3M21 21h-3v-3"/></svg>
+      Scan UTM Smart App QR (Login)
+    </button>
+    <p class="text-eco-300/40 text-xs mt-8">Universiti Teknologi Malaysia · GSC 2026</p>
+  </section>
+
+  <!-- SCREEN 2: BOTTLE SCANNER -->
+  <section id="s2" class="screen absolute inset-0 hidden flex-col p-5 bg-white">
+    <h2 class="text-xl font-bold text-eco-900 mb-1">AI Bottle Scanner</h2>
+    <p class="text-gray-500 text-sm mb-3">Drop PET bottles for AI cleanliness inspection</p>
+    <!-- Scanner visual -->
+    <div id="scanner-box" class="relative bg-eco-100 rounded-2xl h-40 flex items-center justify-center mb-3 overflow-hidden border-2 border-eco-300">
+      <div id="scan-idle" class="text-center"><svg class="mx-auto text-eco-500 mb-1" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg><p class="text-eco-700 font-medium text-sm">Waiting for bottle…</p></div>
+      <div id="scan-active" class="hidden text-center"><div class="scan-line"></div><p class="text-eco-700 font-semibold animate-pulse">Scanning…</p></div>
+      <div id="scan-ok" class="hidden text-center anim-fade"><svg class="mx-auto text-eco-500 mb-1" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg><p class="text-eco-700 font-bold text-sm" id="scan-ok-text"></p></div>
+      <div id="scan-fail" class="hidden text-center anim-fade"><svg class="mx-auto text-red-500 mb-1" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg><p class="text-red-600 font-bold text-sm">Rejected — Contaminated</p><p class="text-red-400 text-xs">Empty &amp; rinse before retry</p></div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="flex gap-2 mb-3">
+      <div class="flex-1 bg-eco-100 rounded-xl p-2.5 text-center"><p class="text-[10px] text-eco-700 uppercase tracking-wide">Bottles</p><p class="text-xl font-bold text-eco-900" id="sess-bottles">0</p></div>
+      <div class="flex-1 bg-eco-100 rounded-xl p-2.5 text-center"><p class="text-[10px] text-eco-700 uppercase tracking-wide">Weight</p><p class="text-xl font-bold text-eco-900"><span id="sess-wt">0</span>g</p></div>
+      <div class="flex-1 bg-eco-100 rounded-xl p-2.5 text-center"><p class="text-[10px] text-eco-700 uppercase tracking-wide">Points</p><p class="text-xl font-bold text-eco-500">+<span id="sess-pts">0</span></p></div>
+    </div>
+
+    <!-- Weight gauge -->
+    <div class="flex items-center gap-3 mb-4 bg-gray-50 rounded-xl p-3">
+      <svg width="56" height="56" viewBox="0 0 80 80" class="shrink-0">
+        <circle cx="40" cy="40" r="34" fill="none" stroke="#e5e7eb" stroke-width="6"/>
+        <circle id="gauge-ring" cx="40" cy="40" r="34" fill="none" stroke="#16A34A" stroke-width="6" stroke-linecap="round" stroke-dasharray="213.6" stroke-dashoffset="213.6" transform="rotate(-90 40 40)" class="gauge-ring"/>
+      </svg>
+      <div><p class="text-xs text-gray-500">Session Gauge</p><p class="font-bold text-eco-900"><span id="gauge-label">0</span>g / 1,000g</p><p class="text-[10px] text-gray-400">toward 3D print milestone</p></div>
+    </div>
+
+    <button onclick="dropBottle(true)" class="btn-touch bg-eco-500 text-white w-full mb-2 flex items-center justify-center gap-2 text-base">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v14m0 0l-4-4m4 4l4-4"/><path d="M4 18h16"/></svg>
+      Drop Clean PET Bottle (+15g / +150 PTS)
+    </button>
+    <button onclick="dropBottle(false)" class="btn-touch bg-red-50 text-red-600 border-2 border-red-200 w-full mb-3 flex items-center justify-center gap-2 text-base">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+      Drop Dirty/Liquid Bottle (AI Reject)
+    </button>
+
+    <!-- Claim area -->
+    <div id="claim-area" class="hidden anim-fade">
+      <div class="border-t border-dashed border-gray-200 pt-3 mt-1 space-y-2">
+        <button onclick="showClaimQR()" class="btn-touch bg-eco-900 text-white w-full flex items-center justify-center gap-2 text-base">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-7"/></svg>
+          Done Dropping — Generate Claim QR
+        </button>
+        <button onclick="claimAndContinue()" class="btn-touch bg-white text-eco-900 border-2 border-eco-200 w-full flex items-center justify-center gap-2 text-base">
+          Claim Points &amp; Continue Directly →
+        </button>
+      </div>
+    </div>
+
+    <!-- Claim QR overlay (inline) -->
+    <div id="claim-qr" class="hidden mt-3 bg-eco-50 border border-eco-200 rounded-2xl p-5 text-center anim-slide">
+      <p class="font-bold text-eco-900 mb-2">Scan to Claim on UTM Smart App</p>
+      <svg id="claim-qr-svg" width="140" height="140" viewBox="0 0 140 140" class="mx-auto mb-2"></svg>
+      <p class="text-xs text-gray-500 mb-3">Or tap below to claim directly on this kiosk</p>
+      <button onclick="claimAndContinue()" class="btn-touch bg-eco-500 text-white w-full text-base">Claim &amp; Go to Dashboard</button>
+    </div>
+  </section>
+
+  <!-- SCREEN 3: DASHBOARD -->
+  <section id="s3" class="screen absolute inset-0 hidden flex-col bg-gray-50">
+    <div class="bg-gradient-to-br from-eco-900 to-eco-700 text-white p-5 pb-6 rounded-b-3xl">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="w-11 h-11 rounded-full bg-eco-500 flex items-center justify-center text-lg font-bold shrink-0">LY</div>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-base leading-tight">Looi Yu Xiang</p>
+          <p class="text-eco-300 text-xs">Level <span id="dash-level">6</span> · <span id="dash-title">Circular Guardian</span></p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-2xl font-extrabold tabular-nums" id="dash-pts">1,150</p>
+          <p class="text-eco-300 text-xs">PTS</p>
+        </div>
+      </div>
+      <!-- XP bar -->
+      <div class="mb-2.5">
+        <div class="flex justify-between text-[10px] text-eco-300 mb-0.5"><span>⭐ XP to Level <span id="next-lvl">7</span></span><span><span id="dash-xp">1,150</span> / <span id="dash-xp-max">1,500</span></span></div>
+        <div class="h-2 bg-white/20 rounded-full overflow-hidden"><div id="xp-bar" class="h-full bg-yellow-400 rounded-full progress-bar" style="width:76%"></div></div>
+      </div>
+      <!-- Weight milestone bar -->
+      <div>
+        <div class="flex justify-between text-[10px] text-eco-300 mb-0.5"><span>🖨️ 3D Print Milestone</span><span><span id="dash-wt">150</span>g / 1,000g</span></div>
+        <div class="h-2 bg-white/20 rounded-full overflow-hidden"><div id="dash-bar" class="h-full bg-eco-300 rounded-full progress-bar" style="width:15%"></div></div>
+      </div>
+    </div>
+
+    <div class="p-4 space-y-4 pb-24">
+      <!-- Impact selector -->
+      <div>
+        <p class="text-xs font-semibold text-eco-900 mb-1.5">Route Your Recycled PET Impact:</p>
+        <div class="flex gap-2" id="impact-sel">
+          <button onclick="pickImpact(0)" class="impact-btn flex-1 text-[11px] py-2 px-1.5 rounded-xl font-semibold transition-all border-2 border-eco-500 bg-eco-500 text-white">Apparel<br><span class="font-normal opacity-80">(Recycled Polyester)</span></button>
+          <button onclick="pickImpact(1)" class="impact-btn flex-1 text-[11px] py-2 px-1.5 rounded-xl font-semibold transition-all border-2 border-gray-200 bg-white text-gray-600">Home Goods</button>
+          <button onclick="pickImpact(2)" class="impact-btn flex-1 text-[11px] py-2 px-1.5 rounded-xl font-semibold transition-all border-2 border-gray-200 bg-white text-gray-600">UCO<br><span class="font-normal opacity-80">(SAF Biofuel)</span></button>
+        </div>
+      </div>
+
+      <!-- Action Cards -->
+      <div class="grid grid-cols-2 gap-3">
+        <div onclick="nav(4,'3D Print Customizer')" class="card flex flex-col items-center text-center">
+          <div class="w-11 h-11 rounded-xl bg-eco-100 flex items-center justify-center mb-2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="1.8"><rect x="6" y="2" width="12" height="6" rx="1"/><rect x="4" y="8" width="16" height="10" rx="2"/><path d="M6 18v3h12v-3"/><circle cx="17" cy="12" r="1" fill="#16A34A"/></svg></div>
+          <p class="font-bold text-sm text-eco-900">Redeem 3D Print</p><p class="text-[11px] text-gray-400">Custom merch</p>
+        </div>
+        <div onclick="nav(5,'Sponsor Vouchers')" class="card flex flex-col items-center text-center">
+          <div class="w-11 h-11 rounded-xl bg-purple-50 flex items-center justify-center mb-2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/><path d="M6 15h4"/></svg></div>
+          <p class="font-bold text-sm text-eco-900">Sponsor Vouchers</p><p class="text-[11px] text-gray-400">Partner rewards</p>
+        </div>
+        <div onclick="showUCOModal()" class="card flex flex-col items-center text-center">
+          <div class="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center mb-2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="1.8"><path d="M12 2C6.5 7 4 10.5 4 14a8 8 0 1016 0c0-3.5-2.5-7-8-12z"/></svg></div>
+          <p class="font-bold text-sm text-eco-900">Log UCO</p><p class="text-[11px] text-gray-400">+500ml / +200 PTS</p>
+        </div>
+        <div onclick="nav(2,'AI Bottle Scanner')" class="card flex flex-col items-center text-center">
+          <div class="w-11 h-11 rounded-xl bg-eco-100 flex items-center justify-center mb-2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg></div>
+          <p class="font-bold text-sm text-eco-900">Drop Bottle</p><p class="text-[11px] text-gray-400">Scan another</p>
+        </div>
+      </div>
+
+      <div class="bg-utm/10 border border-utm/20 rounded-xl p-2.5 text-center">
+        <p class="text-[11px] text-utm font-semibold">🎓 UTM Sustainability Initiative · GSC 2026</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 4: 3D PRINT -->
+  <section id="s4" class="screen absolute inset-0 hidden flex-col p-5 bg-white">
+    <h2 class="text-xl font-bold text-eco-900 mb-1">3D Print Customizer</h2>
+    <p class="text-gray-500 text-sm mb-3">Pick a model or upload your own design</p>
+    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Pre-built Models</p>
+    <div class="space-y-2 mb-4" id="model-list">
+      <label class="flex items-center gap-3 p-3 rounded-xl border-2 border-eco-500 bg-eco-50 cursor-pointer transition"><input type="radio" name="model" value="UTM Keychain" checked class="accent-eco-500 w-4 h-4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="1.8"><circle cx="12" cy="12" r="6"/><path d="M12 6V2M18 12h-2"/></svg><div><p class="font-semibold text-sm text-eco-900">UTM Keychain</p><p class="text-xs text-gray-400">~25min</p></div></label>
+      <label class="flex items-center gap-3 p-3 rounded-xl border-2 border-gray-100 bg-white cursor-pointer transition"><input type="radio" name="model" value="Phone Stand" class="accent-eco-500 w-4 h-4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="1.8"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg><div><p class="font-semibold text-sm text-eco-900">Phone Stand</p><p class="text-xs text-gray-400">~40min</p></div></label>
+      <label class="flex items-center gap-3 p-3 rounded-xl border-2 border-gray-100 bg-white cursor-pointer transition"><input type="radio" name="model" value="Cable Organizer" class="accent-eco-500 w-4 h-4"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M8 6V4m8 2V4"/></svg><div><p class="font-semibold text-sm text-eco-900">Cable Organizer</p><p class="text-xs text-gray-400">~35min</p></div></label>
+    </div>
+    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">— OR Custom Upload —</p>
+    <input id="custom-stl" type="text" placeholder="Enter custom .STL name or engraving…" class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-eco-500 focus:outline-none transition mb-4" oninput="this.value?document.querySelectorAll('input[name=model]').forEach(r=>r.checked=false):null">
+    <button onclick="queuePrint()" class="btn-touch bg-eco-900 text-white w-full flex items-center justify-center gap-2">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="6" rx="1"/><rect x="4" y="8" width="16" height="10" rx="2"/><path d="M6 18v3h12v-3"/></svg>Queue 3D Print (−1,000 PTS)
+    </button>
+    <p class="text-xs text-gray-400 text-center mt-1.5">Requires 1,000 PTS · Pickup at Arked Meranti</p>
+    <div id="queue-confirm" class="hidden mt-4 bg-eco-100 border border-eco-300 rounded-2xl p-4 text-center anim-slide">
+      <svg class="mx-auto text-eco-500 mb-2" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+      <p class="font-bold text-eco-900 mb-1">Print Queued!</p>
+      <p class="text-sm text-eco-700">You may leave now — <strong>UTM Smart App</strong> will notify you when ready for pickup at <strong>Arked Meranti</strong>.</p>
+      <p class="text-xs text-eco-500 mt-2" id="queue-est"></p>
+    </div>
+  </section>
+
+  <!-- SCREEN 5: SPONSOR VOUCHERS -->
+  <section id="s5" class="screen absolute inset-0 hidden flex-col p-5 bg-gray-50">
+    <h2 class="text-xl font-bold text-eco-900 mb-1">Sponsor Vouchers</h2>
+    <p class="text-gray-500 text-sm mb-4">Redeem partner rewards with your PTS</p>
+    <div class="space-y-3" id="voucher-list">
+      <div class="card flex items-start gap-3" id="v0"><div class="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center shrink-0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="1.8"><path d="M20.38 3.46L16 2 12 5.5 8 2 3.62 3.46A2 2 0 002 5.41v13.18a2 2 0 001.62 1.95L8 22l4-3.5L16 22l4.38-1.46A2 2 0 0022 18.59V5.41a2 2 0 00-1.62-1.95z"/></svg></div><div class="flex-1 min-w-0"><p class="font-bold text-sm text-eco-900">15% Off Recycled Polyester Sportswear</p><p class="text-xs text-gray-400 mb-2">Partner: EcoThreads MY</p><button onclick="redeemVoucher(0,'15% Off Recycled Polyester Sportswear',300)" class="text-xs font-bold text-white bg-eco-500 rounded-lg px-4 py-2 active:scale-95 transition">Redeem · 300 PTS</button></div></div>
+      <div class="card flex items-start gap-3" id="v1"><div class="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="3"/><circle cx="7" cy="12" r="2"/><path d="M14 10h4M14 14h4"/></svg></div><div class="flex-1 min-w-0"><p class="font-bold text-sm text-eco-900">Free Green Shuttle Ride</p><p class="text-xs text-gray-400 mb-2">Partner: UTM Campus Transit</p><button onclick="redeemVoucher(1,'Free Green Shuttle Ride',200)" class="text-xs font-bold text-white bg-eco-500 rounded-lg px-4 py-2 active:scale-95 transition">Redeem · 200 PTS</button></div></div>
+      <div class="card flex items-start gap-3" id="v2"><div class="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center shrink-0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></div><div class="flex-1 min-w-0"><p class="font-bold text-sm text-eco-900">RM5 Eco-Café Voucher</p><p class="text-xs text-gray-400 mb-2">Partner: Arked Meranti Café</p><button onclick="redeemVoucher(2,'RM5 Eco-Café Voucher',150)" class="text-xs font-bold text-white bg-eco-500 rounded-lg px-4 py-2 active:scale-95 transition">Redeem · 150 PTS</button></div></div>
+    </div>
+  </section>
+
+  </div><!-- /screens -->
+
+  <!-- ===== PRINT QUEUE BANNER (clickable) ===== -->
+  <div id="print-banner" class="hidden shrink-0 bg-eco-900 text-white px-4 py-2.5 text-sm flex items-center gap-3 cursor-pointer active:bg-eco-700 transition z-10" onclick="toggleDrawer(true)">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="6" rx="1"/><rect x="4" y="8" width="16" height="10" rx="2"/><path d="M6 18v3h12v-3"/></svg>
+    <div class="flex-1"><span class="font-semibold">Print Queue:</span> <span id="pq-text"></span></div>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 15l6-6 6 6"/></svg>
+  </div>
+
+  </div><!-- /kiosk -->
+</div><!-- /outer frame -->
+
+<!-- ============ QR LOGIN OVERLAY ============ -->
+<div id="qr-overlay" class="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center hidden" onclick="closeQRLogin()">
+  <div class="bg-white rounded-3xl p-6 max-w-xs w-full mx-4 text-center anim-slide" onclick="event.stopPropagation()">
+    <div id="qr-stage-scan" class="hidden">
+      <p class="font-bold text-eco-900 text-lg mb-3">Scan with UTM Smart App</p>
+      <div class="relative mx-auto w-36 h-36 mb-4">
+        <svg id="login-qr-svg" width="140" height="140" viewBox="0 0 140 140" class="mx-auto"></svg>
+        <div id="qr-scan-line" class="absolute left-2 right-2 h-0.5 bg-eco-500 top-0" style="animation:scan 1.5s ease-in-out infinite"></div>
+      </div>
+      <p class="text-sm text-gray-500 animate-pulse mb-4">Scanning UTM Smart App…</p>
+      <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-4"><div id="qr-progress" class="h-full bg-eco-500 rounded-full" style="width:0%;transition:width 1.5s linear"></div></div>
+    </div>
+    <div id="qr-stage-done" class="hidden anim-fade">
+      <svg class="mx-auto text-eco-500 mb-2" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+      <p class="font-bold text-eco-900 text-lg mb-1">Paired!</p>
+      <p class="text-sm text-gray-500">Welcome, Looi Yu Xiang</p>
+    </div>
+    <button onclick="skipQRLogin()" id="qr-skip-btn" class="btn-touch bg-gray-100 text-eco-900 w-full text-base mt-2">Skip · Instant Demo Login</button>
+  </div>
+</div>
+
+<!-- ============ UCO MODAL ============ -->
+<div id="uco-modal" class="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center hidden" onclick="closeUCOModal()">
+  <div class="bg-white rounded-3xl p-6 max-w-xs w-full mx-4 text-center anim-slide" onclick="event.stopPropagation()">
+    <div id="uco-stage1">
+      <div class="w-16 h-16 mx-auto mb-3 rounded-full bg-amber-100 flex items-center justify-center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="1.8"><path d="M12 2C6.5 7 4 10.5 4 14a8 8 0 1016 0c0-3.5-2.5-7-8-12z"/></svg></div>
+      <p class="font-bold text-eco-900 text-lg mb-1">UCO Intake Valve</p>
+      <p class="text-sm text-gray-500 mb-4">Opening valve…</p>
+      <!-- Pour animation -->
+      <div class="relative mx-auto w-20 h-28 border-2 border-amber-300 rounded-b-xl overflow-hidden mb-4 bg-amber-50">
+        <div id="uco-fill" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-amber-500 to-amber-300 rounded-b-lg" style="height:0%;transition:height 1.2s ease-in-out"></div>
+        <p class="absolute inset-0 flex items-center justify-center font-bold text-amber-800 text-lg z-10" id="uco-vol">0ml</p>
+      </div>
+    </div>
+    <div id="uco-stage2" class="hidden anim-fade">
+      <svg class="mx-auto text-eco-500 mb-2" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+      <p class="font-bold text-eco-900 text-lg mb-1">UCO Logged!</p>
+      <div class="bg-eco-50 rounded-xl p-3 mb-3 text-left space-y-1">
+        <p class="text-sm text-eco-900">🛢️ Volume: <strong>+500ml</strong></p>
+        <p class="text-sm text-eco-900">⭐ Points: <strong>+200 PTS</strong></p>
+        <p class="text-sm text-eco-900">✈️ SAF CO₂ Offset: <strong>~1.1 kg CO₂e saved</strong></p>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">Routed to Sustainable Aviation Fuel production</p>
+      <button onclick="closeUCOModal()" class="btn-touch bg-eco-500 text-white w-full text-base">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ VOUCHER MODAL ============ -->
+<div id="modal" class="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center hidden" onclick="closeModal()">
+  <div class="bg-white rounded-3xl p-6 max-w-xs w-full mx-4 text-center anim-slide" onclick="event.stopPropagation()">
+    <svg class="mx-auto text-eco-500 mb-2" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+    <h3 class="text-lg font-bold text-eco-900 mb-1">Voucher Redeemed!</h3>
+    <p id="modal-desc" class="text-gray-600 text-sm mb-3"></p>
+    <svg id="modal-barcode" class="mx-auto mb-2" width="200" height="50" viewBox="0 0 200 50"></svg>
+    <p id="modal-code" class="font-mono text-xs text-gray-500 mb-3"></p>
+    <button onclick="closeModal()" class="btn-touch bg-eco-500 text-white w-full text-base">Done</button>
+  </div>
+</div>
+
+<!-- ============ PRINT QUEUE DRAWER ============ -->
+<div id="drawer-bg" class="fixed inset-0 z-[50] bg-black/50 hidden opacity-0 drawer-bg" onclick="toggleDrawer(false)"></div>
+<div id="drawer" class="fixed bottom-0 left-1/2 -translate-x-1/2 z-[51] w-full max-w-md bg-white rounded-t-3xl shadow-2xl drawer-panel translate-y-full" style="max-height:60vh">
+  <div class="p-5">
+    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+    <h3 class="font-bold text-eco-900 text-lg mb-3">Active Print Queue</h3>
+    <div id="drawer-jobs" class="space-y-3 overflow-y-auto" style="max-height:40vh"></div>
+    <p class="text-xs text-gray-400 text-center mt-3">📍 Pickup: Arked Meranti Kiosk #01</p>
+  </div>
+</div>
+
+<script>
+// ========== STATE ==========
+const INIT = {pts:1150,wt:150,xp:1150,xpMax:1500,level:6,sessPts:0,sessWt:0,sessBottles:0,impact:0,queue:[],history:[1],redeemed:[false,false,false]};
+let S = JSON.parse(JSON.stringify(INIT));
+let curScreen = 1;
+
+// ========== CLOCK ==========
+function tickClock(){ document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) }
+tickClock(); setInterval(tickClock, 10000);
+
+// ========== NAVIGATION ==========
+function nav(n, title){ S.history.push(n); show(n, title) }
+function goBack(){ if(S.history.length>1) S.history.pop(); const p=S.history[S.history.length-1]; show(p,{1:'',2:'AI Bottle Scanner',3:'Dashboard',4:'3D Print Customizer',5:'Sponsor Vouchers'}[p]) }
+function goHome(){ S.history=[1]; show(1,'') }
+
+function show(n, title){
+  const prev = document.getElementById('s'+curScreen);
+  const next = document.getElementById('s'+n);
+  // Animate out
+  if(prev && curScreen !== n){ prev.classList.add('screen-exit'); setTimeout(()=>{ prev.classList.add('hidden'); prev.classList.remove('flex','screen-exit') },200) }
+  // Animate in
+  setTimeout(()=>{ next.classList.remove('hidden'); next.classList.add('flex','screen-enter'); setTimeout(()=>next.classList.remove('screen-enter'),300) }, curScreen===n?0:100);
+  curScreen = n;
+  const navEl = document.getElementById('nav');
+  if(n===1){ navEl.classList.add('hidden') } else { navEl.classList.remove('hidden'); document.getElementById('nav-title').textContent = title||'' }
+  if(n===2) resetScanner();
+  if(n===3) refreshDash();
+  if(n===4) resetPrintScreen();
+}
+
+// ========== HELPERS ==========
+function fmt(n){ return n.toLocaleString() }
+function toast(msg){ const t=document.getElementById('toast-box'); t.textContent=msg; t.classList.remove('opacity-0','-translate-y-3'); t.classList.add('opacity-100','translate-y-0'); clearTimeout(t._t); t._t=setTimeout(()=>{ t.classList.remove('opacity-100','translate-y-0'); t.classList.add('opacity-0','-translate-y-3') },2400) }
+function genCode(){ return 'EC-'+Math.random().toString(36).substr(2,8).toUpperCase() }
+function genBarcode(svg){ let b=''; for(let i=0;i<50;i++){ const w=Math.random()>.5?3:1.5; b+=`<rect x="${i*4}" y="0" width="${w}" height="50" fill="#103B2B"/>` } svg.innerHTML=b }
+function genQR(svg){ let h=''; const s=7, g=20; for(let r=0;r<g;r++) for(let c=0;c<g;c++) if(Math.random()>.45||(r<5&&c<5)||(r<5&&c>14)||(r>14&&c<5)) h+=`<rect x="${c*s}" y="${r*s}" width="${s-1}" height="${s-1}" rx="1" fill="#103B2B"/>`; svg.innerHTML=h }
+
+// Animated counter
+function animateNum(el, from, to, suffix=''){
+  const dur=400, start=performance.now();
+  (function step(now){
+    const p=Math.min((now-start)/dur,1); const v=Math.round(from+p*(to-from));
+    el.textContent=fmt(v)+(suffix||'');
+    if(p<1) requestAnimationFrame(step);
+  })(start);
+}
+
+// ========== QR LOGIN FLOW ==========
+let qrTimer=null;
+function showQRLogin(){
+  const ov=document.getElementById('qr-overlay');
+  ov.classList.remove('hidden');
+  document.getElementById('qr-stage-scan').classList.remove('hidden');
+  document.getElementById('qr-stage-done').classList.add('hidden');
+  document.getElementById('qr-skip-btn').classList.remove('hidden');
+  genQR(document.getElementById('login-qr-svg'));
+  setTimeout(()=>document.getElementById('qr-progress').style.width='100%',50);
+  qrTimer=setTimeout(()=>{
+    document.getElementById('qr-stage-scan').classList.add('hidden');
+    document.getElementById('qr-stage-done').classList.remove('hidden');
+    document.getElementById('qr-skip-btn').classList.add('hidden');
+    setTimeout(()=>{ closeQRLogin(); nav(3,'Dashboard') },900);
+  },1800);
+}
+function skipQRLogin(){ clearTimeout(qrTimer); closeQRLogin(); nav(3,'Dashboard') }
+function closeQRLogin(){ clearTimeout(qrTimer); document.getElementById('qr-overlay').classList.add('hidden'); document.getElementById('qr-progress').style.width='0%' }
+
+// ========== SCREEN 2: SCANNER ==========
+let scanning=false;
+function resetScanner(){
+  S.sessPts=0; S.sessWt=0; S.sessBottles=0;
+  document.getElementById('sess-wt').textContent='0';
+  document.getElementById('sess-pts').textContent='0';
+  document.getElementById('sess-bottles').textContent='0';
+  document.getElementById('claim-area').classList.add('hidden');
+  document.getElementById('claim-qr').classList.add('hidden');
+  ['scan-active','scan-ok','scan-fail'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  document.getElementById('scan-idle').classList.remove('hidden');
+  document.getElementById('scanner-box').className='relative bg-eco-100 rounded-2xl h-40 flex items-center justify-center mb-3 overflow-hidden border-2 border-eco-300';
+  updateGauge(); scanning=false;
+}
+function updateGauge(){
+  const total=S.wt+S.sessWt;
+  const pct=Math.min(1,total/1000);
+  const circ=213.6;
+  document.getElementById('gauge-ring').style.strokeDashoffset=circ-(pct*circ);
+  document.getElementById('gauge-label').textContent=total;
+}
+function dropBottle(clean){
+  if(scanning) return; scanning=true;
+  ['scan-idle','scan-ok','scan-fail'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  document.getElementById('scan-active').classList.remove('hidden');
+  document.getElementById('scanner-box').className='relative bg-eco-100 rounded-2xl h-40 flex items-center justify-center mb-3 overflow-hidden border-2 border-eco-300';
+  setTimeout(()=>{
+    document.getElementById('scan-active').classList.add('hidden');
+    if(clean){
+      S.sessBottles++; S.sessWt+=15; S.sessPts+=150;
+      animateNum(document.getElementById('sess-bottles'),S.sessBottles-1,S.sessBottles);
+      animateNum(document.getElementById('sess-wt'),S.sessWt-15,S.sessWt);
+      animateNum(document.getElementById('sess-pts'),S.sessPts-150,S.sessPts);
+      document.getElementById('scan-ok-text').textContent='Clean PET · +15g · +150 PTS';
+      document.getElementById('scan-ok').classList.remove('hidden');
+      document.getElementById('claim-area').classList.remove('hidden');
+      updateGauge();
+    } else {
+      document.getElementById('scan-fail').classList.remove('hidden');
+      document.getElementById('scanner-box').className='relative bg-red-50 rounded-2xl h-40 flex items-center justify-center mb-3 overflow-hidden border-2 border-red-300';
+    }
+    scanning=false;
+  },1300);
+}
+function showClaimQR(){
+  document.getElementById('claim-qr').classList.remove('hidden');
+  genQR(document.getElementById('claim-qr-svg'));
+}
+function claimAndContinue(){
+  if(S.sessPts===0) return;
+  const oldPts=S.pts;
+  S.pts+=S.sessPts; S.wt+=S.sessWt; S.xp+=S.sessPts; checkLevelUp();
+  toast(`+${fmt(S.sessPts)} PTS claimed! Total: ${fmt(S.pts)} PTS`);
+  nav(3,'Dashboard');
+}
+
+// ========== SCREEN 3: DASHBOARD ==========
+function refreshDash(){
+  animateNum(document.getElementById('dash-pts'),0,S.pts);
+  document.getElementById('dash-wt').textContent=fmt(S.wt);
+  document.getElementById('dash-bar').style.width=Math.min(100,(S.wt/1000)*100)+'%';
+  document.getElementById('dash-level').textContent=S.level;
+  document.getElementById('dash-xp').textContent=fmt(S.xp);
+  document.getElementById('dash-xp-max').textContent=fmt(S.xpMax);
+  document.getElementById('next-lvl').textContent=S.level+1;
+  document.getElementById('xp-bar').style.width=Math.min(100,(S.xp/S.xpMax)*100)+'%';
+  const titles=['Eco Novice','Green Starter','Recycler','Eco Warrior','Sustainability Advocate','Circular Guardian','Eco Champion','Planet Hero'];
+  document.getElementById('dash-title').textContent=titles[Math.min(S.level,titles.length-1)]||'Eco Legend';
+  updatePrintBanner();
+}
+function checkLevelUp(){
+  while(S.xp>=S.xpMax){ S.level++; S.xp-=S.xpMax; S.xpMax=Math.round(S.xpMax*1.3); toast(`🎉 Level Up! You're now Level ${S.level}!`) }
+}
+function pickImpact(i){
+  S.impact=i;
+  document.querySelectorAll('.impact-btn').forEach((b,idx)=>{
+    b.className=idx===i
+      ?'impact-btn flex-1 text-[11px] py-2 px-1.5 rounded-xl font-semibold transition-all border-2 border-eco-500 bg-eco-500 text-white'
+      :'impact-btn flex-1 text-[11px] py-2 px-1.5 rounded-xl font-semibold transition-all border-2 border-gray-200 bg-white text-gray-600';
+  });
+}
+
+// ========== UCO MODAL ==========
+let ucoTimer=null;
+function showUCOModal(){
+  const m=document.getElementById('uco-modal'); m.classList.remove('hidden');
+  document.getElementById('uco-stage1').classList.remove('hidden');
+  document.getElementById('uco-stage2').classList.add('hidden');
+  document.getElementById('uco-fill').style.height='0%';
+  document.getElementById('uco-vol').textContent='0ml';
+  setTimeout(()=>{
+    document.getElementById('uco-fill').style.height='100%';
+    let v=0; const iv=setInterval(()=>{ v+=25; if(v>500){v=500;clearInterval(iv)} document.getElementById('uco-vol').textContent=v+'ml' },60);
+  },200);
+  ucoTimer=setTimeout(()=>{
+    document.getElementById('uco-stage1').classList.add('hidden');
+    document.getElementById('uco-stage2').classList.remove('hidden');
+    const oldPts=S.pts; S.pts+=200; S.xp+=200; checkLevelUp(); refreshDash();
+  },1600);
+}
+function closeUCOModal(){ clearTimeout(ucoTimer); document.getElementById('uco-modal').classList.add('hidden') }
+
+// ========== SCREEN 4: 3D PRINT ==========
+function resetPrintScreen(){
+  document.getElementById('queue-confirm').classList.add('hidden');
+  document.getElementById('custom-stl').value='';
+  document.querySelectorAll('input[name=model]')[0].checked=true;
+  updateModelStyles();
+}
+document.addEventListener('change',e=>{ if(e.target.name==='model') updateModelStyles() });
+function updateModelStyles(){
+  document.querySelectorAll('#model-list label').forEach(l=>{
+    const r=l.querySelector('input');
+    l.className=r.checked?'flex items-center gap-3 p-3 rounded-xl border-2 border-eco-500 bg-eco-50 cursor-pointer transition':'flex items-center gap-3 p-3 rounded-xl border-2 border-gray-100 bg-white cursor-pointer transition';
+  });
+}
+function queuePrint(){
+  if(S.pts<1000){ toast('❌ Not enough PTS! Need 1,000.'); return }
+  const custom=document.getElementById('custom-stl').value.trim();
+  const sel=document.querySelector('input[name=model]:checked');
+  const name=custom||(sel?sel.value:'UTM Keychain');
+  const times={'UTM Keychain':25,'Phone Stand':40,'Cable Organizer':35};
+  const est=times[name]||30;
+  S.pts-=1000; S.queue.push({name,est,time:new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})});
+  refreshDash();
+  document.getElementById('queue-confirm').classList.remove('hidden');
+  document.getElementById('queue-est').textContent=`Model: ${name} · Est. ${est} min · Queued at ${new Date().toLocaleTimeString()}`;
+  updatePrintBanner(); toast('🖨️ Print queued! −1,000 PTS');
+}
+function updatePrintBanner(){
+  const b=document.getElementById('print-banner');
+  if(!S.queue.length){ b.classList.add('hidden'); return }
+  b.classList.remove('hidden');
+  document.getElementById('pq-text').textContent=`${S.queue.length} job(s) · Tap for details`;
+}
+
+// ========== PRINT DRAWER ==========
+function toggleDrawer(open){
+  const bg=document.getElementById('drawer-bg'), dr=document.getElementById('drawer');
+  if(open){
+    bg.classList.remove('hidden'); setTimeout(()=>bg.classList.replace('opacity-0','opacity-100'),10);
+    dr.style.transform='translateX(-50%) translateY(0)';
+    renderDrawerJobs();
+  } else {
+    bg.classList.replace('opacity-100','opacity-0'); setTimeout(()=>bg.classList.add('hidden'),250);
+    dr.style.transform='translateX(-50%) translateY(100%)';
+  }
+}
+function renderDrawerJobs(){
+  const c=document.getElementById('drawer-jobs');
+  if(!S.queue.length){ c.innerHTML='<p class="text-gray-400 text-sm text-center py-4">No active jobs</p>'; return }
+  c.innerHTML=S.queue.map((j,i)=>{
+    const pct=Math.min(100,Math.round(((Date.now()/1000)%j.est)/j.est*100+30));
+    return `<div class="bg-gray-50 rounded-xl p-3">
+      <div class="flex justify-between items-center mb-1"><span class="font-semibold text-sm text-eco-900">${j.name}</span><span class="text-xs text-gray-400">Job #${i+1}</span></div>
+      <div class="h-2 bg-gray-200 rounded-full overflow-hidden mb-1"><div class="h-full bg-eco-500 rounded-full progress-bar" style="width:${pct}%"></div></div>
+      <div class="flex justify-between text-[10px] text-gray-500"><span>~${j.est} min · queued ${j.time}</span><span>${pct}%</span></div>
+    </div>`
+  }).join('');
+}
+
+// ========== SCREEN 5: VOUCHERS ==========
+function redeemVoucher(idx, name, cost){
+  if(S.redeemed[idx]){ toast('Already redeemed!'); return }
+  if(S.pts<cost){ toast(`❌ Not enough PTS! Need ${fmt(cost)}.`); return }
+  S.pts-=cost; S.redeemed[idx]=true; refreshDash();
+  const btn=document.querySelector(`#v${idx} button`);
+  btn.textContent='Redeemed ✓'; btn.className='text-xs font-bold text-white bg-gray-400 rounded-lg px-4 py-2 cursor-not-allowed'; btn.disabled=true;
+  document.getElementById('modal-desc').textContent=name;
+  document.getElementById('modal-code').textContent=genCode();
+  genBarcode(document.getElementById('modal-barcode'));
+  document.getElementById('modal').classList.remove('hidden');
+  toast(`🎟️ Redeemed! −${fmt(cost)} PTS`);
+}
+function closeModal(){ document.getElementById('modal').classList.add('hidden') }
+
+// ========== RESET DEMO ==========
+function resetDemo(){
+  S=JSON.parse(JSON.stringify(INIT));
+  // Reset voucher buttons
+  document.querySelectorAll('#voucher-list .card').forEach((c,i)=>{
+    const btn=c.querySelector('button');
+    const labels=['Redeem · 300 PTS','Redeem · 200 PTS','Redeem · 150 PTS'];
+    const costs=[300,200,150]; const names=['15% Off Recycled Polyester Sportswear','Free Green Shuttle Ride','RM5 Eco-Café Voucher'];
+    btn.textContent=labels[i]; btn.disabled=false;
+    btn.className='text-xs font-bold text-white bg-eco-500 rounded-lg px-4 py-2 active:scale-95 transition';
+    btn.onclick=()=>redeemVoucher(i,names[i],costs[i]);
+  });
+  updatePrintBanner(); toggleDrawer(false);
+  goHome(); toast('🔄 Demo state reset!');
+}
+
+// ========== INIT ==========
+show(1,'');
+</script>
+</body>
+</html>
