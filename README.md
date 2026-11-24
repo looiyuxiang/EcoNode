@@ -81,6 +81,12 @@ The interactive prototype is completely self-contained in a single lightweight f
 
 ## 👥 Team EcoNode
 
-- **Lead Developer & Designer:** Looi Yu Xiang
-- **Institution:** Universiti Teknologi Malaysia (UTM)
-- **Initiative:** UTM Global Sustainability Challenge (GSC) 2026
+| Role | Name | Affiliation |
+| :--- | :--- | :--- |
+| **Team Lead & Prototype Developer** | Looi Yu Xiang | Universiti Teknologi Malaysia (UTM) |
+| **Team Member** | Khadijah Hedrah binti Rahhil @ Abd Rahim | Universiti Teknologi Malaysia (UTM) |
+| **Team Member** | Nur Aisyah Sofea binti Ismail | Universiti Teknologi Malaysia (UTM) |
+| **Team Member** | Iman binti Mohamad Zelman | Universiti Teknologi Malaysia (UTM) |
+| **Team Member** | Phua Yu Cheng | Universiti Teknologi Malaysia (UTM) |
+
+*Developed for the **UTM Global Sustainability Challenge (GSC) 2026**.*
